@@ -1,0 +1,68 @@
+---
+title: "Infer ASVs with DADA2"
+author: "Andy Zhang"
+output: html_document
+date: "2024-02-21"
+editor_options: 
+  chunk_output_type: console
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE,
+                      fig.align = "center",
+                      fig.path = "../figures/01_DADA2/")
+```
+
+# Goals of this file
+
+1. Use row fastq files and generate quality plots to assess quiality of reads.
+2. Filter out and trim out bad sequences and bases from our sequencing files.
+3. Write out fastq files with high quality sequences
+4. Evaluate the quality from our filter and trim
+
+# Load Libraries
+```{r load-libraies}
+#install.packages("devtools")
+library(devtools)
+
+#devtools::install_github("benjjneb/dada2")
+library(dada2)
+```
+
+# Load Data
+
+```{r load-data}
+# Set Raw fastq path to the raw sequencing files
+# Path to the fastq files
+raw_fastq_path <- "data/01_DADA2/01_raw_gzippedfastqs"
+raw_fastq_path
+
+# What files are in this path? Intuition Check
+list.files(raw_fastq_path)
+
+# How many files are there?
+str(list.files(raw_fastq_path))
+
+# Create vector of forward reads
+forward_reads <- list.files(raw_fastq_path, pattern = "R1_001.fastq.gz", full.names = TRUE)
+head(forward_reads)
+str(forward_reads)
+
+# Create a vector of reverse reads
+reverse_reads <- list.files(raw_fastq_path, pattern = "R2_001.fastq.gz", full.names = TRUE)
+# Intution Check
+head(reverse_reads)
+```
+
+# Quality Plots
+
+```{r raw-quality-plot}
+# Randomly Select two samples to evaluate
+random_samples <- sample(1:length(reverse_reads), size = 2)
+random_samples
+
+# Calculate and plot quality of these two samples
+plotQualityProfile(forward_reads[random_samples])
+plotQualityProfile(reverse_reads[random_samples])
+
+```
