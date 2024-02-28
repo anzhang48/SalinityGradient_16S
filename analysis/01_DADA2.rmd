@@ -12,7 +12,14 @@ knitr::opts_chunk$set(echo = TRUE,
                       fig.align = "center",
                       fig.path = "../figures/01_DADA2/")
 ```
+# Before you start
 
+## Set my seed
+```{r set-seed}
+# Any number can be chosen
+set.seed(895820392)
+
+```
 # Goals of this file
 
 1.  Use row fastq files and generate quality plots to assess quiality of reads.
@@ -27,7 +34,12 @@ knitr::opts_chunk$set(echo = TRUE,
 library(devtools)
 
 #devtools::install_github("benjjneb/dada2")
-library(dada2)
+
+#install.packages("tidyverse")
+library(tidyverse)
+
+#install.packages("patchwork")
+library(patchwork)
 ```
 
 # Load Data
@@ -45,12 +57,12 @@ list.files(raw_fastq_path)
 str(list.files(raw_fastq_path))
 
 # Create vector of forward reads
-forward_reads <- list.files(raw_fastq_path, pattern = "R1_001.fastq.gz", full.names = TRUE)
+raw_forward_reads <- list.files(raw_fastq_path, pattern = "R1_001.fastq.gz", full.names = TRUE)
 head(forward_reads)
 str(forward_reads)
 
 # Create a vector of reverse reads
-reverse_reads <- list.files(raw_fastq_path, pattern = "R2_001.fastq.gz", full.names = TRUE)
+raw_reverse_reads <- list.files(raw_fastq_path, pattern = "R2_001.fastq.gz", full.names = TRUE)
 # Intution Check
 head(reverse_reads)
 ```
@@ -63,8 +75,10 @@ random_samples <- sample(1:length(reverse_reads), size = 2)
 random_samples
 
 # Calculate and plot quality of these two samples
-plotQualityProfile(forward_reads[random_samples])
-plotQualityProfile(reverse_reads[random_samples])
+plotQualityProfile(raw_forward_reads[random_samples]+
+                     labs(title = "Raw Forward Quality Plot"))
+plotQualityProfile(raw_reverse_reads[random_samples]+
+                     labs(title = "Raw Reverse Quality Plot"))
 
 ```
 
@@ -94,8 +108,98 @@ head(filtered_reverse_reads)
 
 # Filter and Trim Reads
 
-```{r filter-and-trim}
-?filterAndTrim
-#filtered_reads <- 
+Parameters of filter and trim **DEPEND ON THE DATASET**
 
+- 'maxN' = number of N bases. Remove all Ns from the data.
+- 'maxEE' = Quality Filtering threshold, applied to expected error. Here, if there's 2 expected errors. It's ok. But more than 2. Thrown away the sequence. Two values, first is for the forward reads; second is for reverse reads.
+- 'trimleft' Number of nucleotides to remove at the start of each read.
+- 'truncQ' Truncate reads after truncLen bases. Reads shorter than this are discarded.
+
+```{r filter-and-trim}
+# Assign vector to filtered reads
+# trim out poor bases, first 3 bps on F reads
+# write out filtered fastq files
+filtered_reads <- filterAndTrim(fwd = forward_reads, filt = filtered_forward_reads,
+              rev = reverse_reads, filt.rev = filtered_reverse_reads,
+              maxN = 0, maxEE = c(2,2), trimLeft = 3,
+              truncQ = 2, rm.phix = TRUE, compress = TRUE)
+# Intuition Check
+length(filtered_reads)
+```
+
+# Graphing Filter and Trim Quality Plots
+
+```{r filter-trim-quality-plot}
+
+
+
+```
+
+# Aggregated Trimmed Plots
+```{r}
+# Aggregate QC Plots
+#install and library patchwork
+plotQualityProfile(filtered_forward_reads, aggregate = TRUE) +
+  plotQualityProfile(filtered_reverse_reads, aggregate = TRUE)
+
+```
+
+## Stats on read output from "filterAndTrim"
+
+```{r FilterTrim-stats}
+filtered_df <- as.data.frame(filtered_reads)
+head(filtered_df)
+
+# Statistics on our Reads
+filtered_df %>%
+  reframe(median_reads_in = median(reads.in),
+          median_reads_out = median(reads.out),
+          median_percent_retained = (median(reads.out/median(reads.in))))
+```
+
+#Error Modeling
+
+**Note** Run separately on each Illumina dataset.
+```{r learn-errors}
+
+# Forward Reads
+error_forward_reads <- 
+  learnErrors(filtered_forward_reads) 
+#multithreaded = TRUE"
+
+# Reverse Reads
+error_reverse_reads <- 
+  learnErrors(filtered_reverse_reads) 
+#multithreaded = TRUE"
+
+# Plot reverse
+plotErrors(error_reverse_reads, nominalQ = TRUE)+
+  labs(title = "Reverse Read Error Model")
+```
+
+# Infer ASVs
+
+Note this is happening seperately on the forward and reverse reads. This is unique to DADA2.
+
+```{r Infer ASVs}
+#Infer forward ASVs
+dada_forward <- dada(filtered_forward_reads,
+                     err = error_forward_reads)
+                     #multithread = TRUE
+#Infer reverse ASVs
+dada_reverse <- dada(filtered_reverse_reads,
+                     err = error_reverse_reads)
+                     #multithread = TRUE
+
+```
+
+```{r Graph ASVs}
+
+
+```
+# Session Information
+
+```{r session-info}
+# Ensure reproducibility
+devtools::session_info()
 ```
