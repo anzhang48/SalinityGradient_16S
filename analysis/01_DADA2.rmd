@@ -15,12 +15,13 @@ knitr::opts_chunk$set(echo = TRUE,
 
 # Goals of this file
 
-1. Use row fastq files and generate quality plots to assess quiality of reads.
-2. Filter out and trim out bad sequences and bases from our sequencing files.
-3. Write out fastq files with high quality sequences
-4. Evaluate the quality from our filter and trim
+1.  Use row fastq files and generate quality plots to assess quiality of reads.
+2.  Filter out and trim out bad sequences and bases from our sequencing files.
+3.  Write out fastq files with high quality sequences
+4.  Evaluate the quality from our filter and trim
 
 # Load Libraries
+
 ```{r load-libraies}
 #install.packages("devtools")
 library(devtools)
@@ -96,6 +97,5 @@ head(filtered_reverse_reads)
 ```{r filter-and-trim}
 ?filterAndTrim
 #filtered_reads <- 
-
 
 ```
