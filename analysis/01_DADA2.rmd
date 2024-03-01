@@ -1,8 +1,14 @@
 ---
 title: "Infer ASVs with DADA2"
-author: "Andy Zhang"
-output: html_document
-date: "2024-02-21"
+author: "Marian Schmidt"
+date: "`r Sys.Date()`"
+output: 
+  html_document:
+  toc: yes
+  toc_float:
+      collapsed: no
+      smooth_scroll: yes
+      toc_depth: 3
 editor_options: 
   chunk_output_type: console
 ---
@@ -26,6 +32,16 @@ set.seed(895820392)
 2.  Filter out and trim out bad sequences and bases from our sequencing files.
 3.  Write out fastq files with high quality sequences
 4.  Evaluate the quality from our filter and trim
+5.  Infer Errors on forward and reverse reads individually
+6.  Identified ASVs on forward and reverse reads separately, using error model.
+7.  Merge forward and reverse ASVs into "contigous ASVs".
+8.  Generate the ASV count table ('otu_table' input for phyloseq)
+
+## Output that we need:
+
+1. ASV count table 'otu_table'
+2. Taxonomy table 'tax_table'
+3. Sample Information: 'sample_data' track the reads lost throughout the DADA2 workflow 
 
 # Load Libraries
 
@@ -34,6 +50,7 @@ set.seed(895820392)
 library(devtools)
 
 #devtools::install_github("benjjneb/dada2")
+library(dada2)
 
 #install.packages("tidyverse")
 library(tidyverse)
@@ -58,27 +75,27 @@ str(list.files(raw_fastq_path))
 
 # Create vector of forward reads
 raw_forward_reads <- list.files(raw_fastq_path, pattern = "R1_001.fastq.gz", full.names = TRUE)
-head(forward_reads)
-str(forward_reads)
+head(raw_forward_reads)
+str(raw_forward_reads)
 
 # Create a vector of reverse reads
 raw_reverse_reads <- list.files(raw_fastq_path, pattern = "R2_001.fastq.gz", full.names = TRUE)
 # Intution Check
-head(reverse_reads)
+head(raw_reverse_reads)
 ```
 
 # Quality Plots
 
 ```{r raw-quality-plot}
 # Randomly Select two samples to evaluate
-random_samples <- sample(1:length(reverse_reads), size = 2)
+random_samples <- sample(1:length(raw_reverse_reads), size = 2)
 random_samples
 
 # Calculate and plot quality of these two samples
-plotQualityProfile(raw_forward_reads[random_samples]+
-                     labs(title = "Raw Forward Quality Plot"))
-plotQualityProfile(raw_reverse_reads[random_samples]+
-                     labs(title = "Raw Reverse Quality Plot"))
+plotQualityProfile(raw_forward_reads[random_samples])+
+                     labs(title = "Raw Forward Quality Plot")
+plotQualityProfile(raw_reverse_reads[random_samples])+
+                     labs(title = "Raw Reverse Quality Plot")
 
 ```
 
@@ -86,7 +103,7 @@ plotQualityProfile(raw_reverse_reads[random_samples]+
 
 ```{r prep-filtered-sequences}
 # Vector of our samples, extract sample name from files
-samples <- sapply(strsplit(basename(forward_reads), "_"), '[',1)
+samples <- sapply(strsplit(basename(raw_forward_reads), "_"), '[',1)
 # Intuition Check
 head(samples)
   
@@ -119,8 +136,8 @@ Parameters of filter and trim **DEPEND ON THE DATASET**
 # Assign vector to filtered reads
 # trim out poor bases, first 3 bps on F reads
 # write out filtered fastq files
-filtered_reads <- filterAndTrim(fwd = forward_reads, filt = filtered_forward_reads,
-              rev = reverse_reads, filt.rev = filtered_reverse_reads,
+filtered_reads <- filterAndTrim(fwd = raw_forward_reads, filt = filtered_forward_reads,
+              rev = raw_reverse_reads, filt.rev = filtered_reverse_reads,
               maxN = 0, maxEE = c(2,2), trimLeft = 3,
               truncQ = 2, rm.phix = TRUE, compress = TRUE)
 # Intuition Check
@@ -193,8 +210,25 @@ dada_reverse <- dada(filtered_reverse_reads,
 
 ```
 
-```{r Graph ASVs}
+# Merge Forward and Reverse ASVs
+```{r merge forward and reverse asvs}
+# merge forward and reverse ASVs
+merged_ASVs <- mergePairs(dada_forward, filtered_forward_reads,
+                          dada_reverse, filtered_reverse_reads,
+                          verbose = TRUE)
 
+# Evaluate the Output
+typeof(merged_ASVs)
+length(merged_ASVs)
+names(merged_ASVs)
+```
+
+#Generate ASV count table
+```{r generate-ASV-Table}
+# Create ASV count table
+row_ASV_table <- makeSequenceTable(merged_ASVs)
+
+# Write out the file to data/DADA2
 
 ```
 # Session Information
