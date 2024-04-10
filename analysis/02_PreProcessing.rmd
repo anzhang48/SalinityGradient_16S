@@ -21,9 +21,11 @@ knitr::opts_chunk$set(echo = TRUE,
 
 ```{r load-libraies, message=FALSE, warning=TRUE, include=FALSE}
 library(devtools)
-BiocManager::install("phyloseq")
+#BiocManager::install("phyloseq")
 library(phyloseq)
 library(tidyverse)
+pacman::p_load(devtools, phyloseq, tidyverse, dada2, install = FALSE)
+library(dada2)
 ```
 
 # Goals
@@ -39,8 +41,11 @@ Then we will remove the following:
 1.  Remove Chloroplasts
 2.  Remove Mitocondria
 3.  Remove samples without "enough reads"
+4.  Evaluate accuracy by looking at the Mock Community
+5.  Remove samples without "enough" reads.
 
-Finally, write data file of phyloseq output.
+Finally, write data file of phyloseq output, which will be stored in
+
 
 # Load Data
 
@@ -140,3 +145,263 @@ raw_physeq
 # Save this raw phyloseq object
 save(raw_physeq, file = "data/02_PreProcessing/raw_physeq.RData")
 ```
+
+# Clean up the data 
+1. Chloroplasts
+2. Mitochondria
+
+```{r rm-mitos-cholors}
+# Remind myself of the tax table
+#view(tax_mat)
+
+# Make a new physeq without the mitochondria or chloroplasts
+noChloros_physeq <-
+  raw_physeq %>%
+  # rm chloroplasts
+  subset_taxa(Order != "Chloroplast" |  is.na(Order))
+
+# How many taxa were chloroplasts
+num_chloros_asv <- ntaxa(raw_physeq) - ntaxa(noChloros_physeq)
+num_chloros_asv
+
+# Intution Check
+#Chloros_physeq %>%
+  #tax_table() %>%
+ #data.frame() %>%
+  #View()
+
+# remove mitochondria 
+noChlorosMito_physeq <- 
+  noChloros_physeq %>%
+  subset_taxa(Family != "Mitochondria" | is.na(Family))
+
+num_mito_asv <- ntaxa(noChloros_physeq) - ntaxa(noChlorosMito_physeq)
+num_mito_asv
+
+# How many total ASVs were removed from chloros and mitos
+
+ntaxa(raw_physeq) - ntaxa(noChlorosMito_physeq)
+# Proportion of ASVs
+ntaxa(noChlorosMito_physeq)/ntaxa(raw_physeq)
+```
+
+# Evaluate and remove the control samples
+
+Take a look at the negaive contorls then make a decison about whether or not to remove the ASVs that we found in out controls
+
+1. Negative controls
+2. ASVs found within the negative controls and their distribution in the controls
+3. Evaluate the mock community
+
+```{r negative controls}
+
+# create a vector that were negative controls
+control_samples <- c("Water Control", "002um-Control",
+                     "3um-Control", "DNA-Ext-Control")
+# Make a new phyloseq object of only the control samples
+control_physeq <- 
+  noChlorosMito_physeq %>%
+  subset_samples(., names %in% control_samples) %>%
+# force remove ASVs with 0 counts
+prune_taxa(taxa_sums(.) > 0, .)
+
+control_physeq
+
+# vector of control ASVs
+control_ASVs <- 
+  control_physeq %>%
+  tax_table() %>%
+  data.frame %>%
+  dplyr::select(ASV) %>%
+  as.vector()
+
+# Visualize raw abundance values of control ASVs
+control_physeq %>%
+  plot_bar(., "ASV", fill = "ASV")
+
+############################# Check control ASVs in the samples
+# Make a new phyloseq object with only the control ASVs and ALL samples
+control_ASV_physeq <- 
+  noChlorosMito_physeq %>%
+  subset_taxa(., ASV %in% control_ASVs$ASV)
+
+# Inspect it
+control_ASV_physeq
+
+# Take a look at the abundances
+control_ASV_physeq %>%
+  plot_bar(., "ASV", fill = "ASV", facet_grid = Sample_or_Control~.)
+
+# Check tax of ASV_3
+#control_ASV_physeq %>%
+  #tax_table()%>%
+  #data.frame()%>%
+  #View()
+
+# Would only like to keep ASV_18 and ASV_56, everything else is trash
+controlASVs_toREMOVE <- dplyr::setdiff(control_ASVs$ASV, c("ASV_18", "ASV_56"))
+
+# Intution check
+length(controlASVs_toREMOVE)
+
+## Make my new phyloseq object
+noControlCholorsMito_physeq <- 
+  noChlorosMito_physeq %>%
+  # Actually remove the control ASVs (except 18, 56)
+  subset_taxa(., !(ASV %in% controlASVs_toREMOVE)) %>%
+  subset_samples(., !(names %in% control_samples))
+  
+
+# Inspect no controls object
+noControlCholorsMito_physeq
+
+# After filtering how many ASVs were removed
+
+total_ASV_rm <- ntaxa(raw_physeq) - ntaxa(noControlCholorsMito_physeq)
+total_ASV_rm
+
+```
+
+# Evaluate Accuracy of the Mock Community
+
+- make a mock phlyoseq object
+- load in standard fasta sequences of the mock community
+- test the differences between the two 
+```{r}
+# Make mock phyloseq object
+mock_physeq <- 
+  noControlCholorsMito_physeq %>%
+  subset_samples(., names == "MockZymoPos") %>%
+  prune_taxa(taxa_sums(.) > 0, .)
+
+mock_physeq
+tax_table(mock_physeq)
+
+# write us a messages summarizing this
+cat("DADA2 inferred,", ntaxa(mock_physeq), "ASVs Present in the mock community.")
+
+######### Load in mock reference sequence from Zymo
+mock_ref <- getSequences("/local/workdir/az363/git_repos/SalinityGradient_16S/data/02_PreProcessing/mock_amplicons.fasta")
+names(mock_ref)
+
+### Pull out seq from Sequenced Mock community
+mock_seqs <- 
+  mock_physeq %>% 
+  tax_table() %>%
+  data.frame()%>%
+  dplyr::select(ASV, ASVseq)
+  #view(mock_seqs)
+# Inspect
+head(mock_seqs)
+
+# Which ASVs match the reference
+matched_asvs <-
+  mock_seqs %>%
+  rowwise() %>%
+  # check each ASV if they match, TRUE, if not = FALSE
+  mutate(Match = any(grepl(ASVseq, mock_ref))) %>%
+  # Create a vector of names that matched
+  pull(ASV)
+
+cat(length(matched_asvs), "ASVs were exact matches to the expected reference sequence")
+
+# How many sequences were in the mock?
+mock_SeqDepth <-
+  mock_physeq %>%
+  otu_table() %>%
+  data.frame() %>%
+  colSums()
+
+# Who is in the sequenced mock community?
+mock_physeq %>%
+  tax_table() %>%
+  data.frame() %>%
+  dplyr::select(Genus, Species)
+names(mock_ref)
+
+# Evaluate which ones do NOT match
+# What's their abundances
+# This help provides error rates
+```
+
+```{r rm-mock-asvs}
+noControlsMock_CholorsMito_physeq <-
+noControlCholorsMito_physeq %>%
+  # remove mock community
+  subset_samples(., names != "MockZymoPos") %>%
+  # remove ASVs
+  subset_taxa(., !(ASV %in% matched_asvs))
+
+noControlsMock_CholorsMito_physeq
+
+#Intution Check 
+num_ASVs_mock <- ntaxa(noControlCholorsMito_physeq) -
+ntaxa(noControlsMock_CholorsMito_physeq)
+
+num_ASVs_mock
+```
+
+# Evaluate the Sequencing Depth
+```{r seq-depth}
+# The current data object
+noControlsMock_CholorsMito_physeq
+
+# What is the library size/sequencing depth for each sample?
+seqSums_df <- 
+  noControlsMock_CholorsMito_physeq %>%
+  otu_table() %>%
+  # Sum each sample column
+  colSums() %>%
+  data.frame() %>%
+  rownames_to_column(var = "names") %>%
+  left_join(., metadata_track_reads_df, by = "names")
+
+# check
+dim(seqSums_df)
+head(seqSums_df)
+
+# Rename second column
+colnames(seqSums_df)[2] <- "TotalSeqs"
+
+# Plot it
+seqSums_df %>%
+  ggplot(aes(x=reorder(names, TotalSeqs), y = TotalSeqs,
+             fill = station))+
+  geom_bar(stat = "identity")
+
+# Density Plot
+seqSums_df %>%
+  ggplot(aes(TotalSeqs, fill = station))+
+  geom_density(alpha = 0.5)
+```
+
+# Remove samples with few reads
+```{r rm-few-reads}
+# Identifying samples with few reads
+seqSums_df %>%
+  dplyr::select(names, TotalSeqs)%>%
+  arrange(TotalSeqs)%>%
+  head()
+
+# Check
+min(sample_sums(noControlsMock_CholorsMito_physeq))
+# Remove samples with few reads
+raw_preprocessed_physeq <-
+  noControlsMock_CholorsMito_physeq %>%
+  subset_samples(., names != "20210615-MA-SCB2F")
+# What's the new min seq depth
+min(sample_sums(raw_preprocessed_physeq))
+```
+
+# Save Preprocessed Phyloseq Object
+```{r save-physeq}
+save(raw_preprocessed_physeq,
+     file = "data/02_PreProcessing/raw_preprocessed_physeq.RData")
+```
+
+# Session Information
+```{r session-info}
+# Ensure reproducibility 
+devtools::session_info()
+```
+

@@ -1,6 +1,6 @@
 ---
 title: "Infer ASVs with DADA2"
-author: "Marian Schmidt"
+author: "Andy Zhang"
 date: "`r Sys.Date()`"
 output: 
   html_document:
@@ -13,19 +13,23 @@ editor_options:
   chunk_output_type: console
 ---
 
+
 ```{r setup, include=FALSE}
 knitr::opts_chunk$set(echo = TRUE,
                       fig.align = "center",
                       fig.path = "../figures/01_DADA2/")
 ```
+
 # Before you start
 
 ## Set my seed
+
 ```{r set-seed}
 # Any number can be chosen
 set.seed(895820392)
 
 ```
+
 # Goals of this file
 
 1.  Use row fastq files and generate quality plots to assess quiality of reads.
@@ -39,9 +43,9 @@ set.seed(895820392)
 
 ## Output that we need:
 
-1. ASV count table 'otu_table'
-2. Taxonomy table 'tax_table'
-3. Sample Information: 'sample_data' track the reads lost throughout the DADA2 workflow 
+1.  ASV count table 'otu_table'
+2.  Taxonomy table 'tax_table'
+3.  Sample Information: 'sample_data' track the reads lost throughout the DADA2 workflow
 
 # Load Libraries
 
@@ -127,15 +131,16 @@ head(filtered_reverse_reads)
 
 Parameters of filter and trim **DEPEND ON THE DATASET**
 
-- 'maxN' = number of N bases. Remove all Ns from the data.
-- 'maxEE' = Quality Filtering threshold, applied to expected error. Here, if there's 2 expected errors. It's ok. But more than 2. Thrown away the sequence. Two values, first is for the forward reads; second is for reverse reads.
-- 'trimleft' Number of nucleotides to remove at the start of each read.
-- 'truncQ' Truncate reads after truncLen bases. Reads shorter than this are discarded.
+-   'maxN' = number of N bases. Remove all Ns from the data.
+-   'maxEE' = Quality Filtering threshold, applied to expected error. Here, if there's 2 expected errors. It's ok. But more than 2. Thrown away the sequence. Two values, first is for the forward reads; second is for reverse reads.
+-   'trimleft' Number of nucleotides to remove at the start of each read.
+-   'truncQ' Truncate reads after truncLen bases. Reads shorter than this are discarded.
 
 ```{r filter-and-trim}
 # Assign vector to filtered reads
 # trim out poor bases, first 3 bps on F reads
 # write out filtered fastq files
+
 filtered_reads <- filterAndTrim(fwd = raw_forward_reads, filt = filtered_forward_reads,
               rev = raw_reverse_reads, filt.rev = filtered_reverse_reads,
               maxN = 0, maxEE = c(2,2), trimLeft = 3,
@@ -153,6 +158,7 @@ length(filtered_reads)
 ```
 
 # Aggregated Trimmed Plots
+
 ```{r}
 # Aggregate QC Plots
 #install and library patchwork
@@ -177,6 +183,7 @@ filtered_df %>%
 #Error Modeling
 
 **Note** Run separately on each Illumina dataset.
+
 ```{r learn-errors}
 
 # Forward Reads
@@ -211,6 +218,7 @@ dada_reverse <- dada(filtered_reverse_reads,
 ```
 
 # Merge Forward and Reverse ASVs
+
 ```{r merge forward and reverse asvs}
 # merge forward and reverse ASVs
 merged_ASVs <- mergePairs(dada_forward, filtered_forward_reads,
@@ -223,7 +231,8 @@ length(merged_ASVs)
 names(merged_ASVs)
 ```
 
-#Generate ASV count table
+# Generate ASV count table
+
 ```{r generate-ASV-Table}
 # Create ASV count table
 row_ASV_table <- makeSequenceTable(merged_ASVs)
@@ -231,6 +240,7 @@ row_ASV_table <- makeSequenceTable(merged_ASVs)
 # Write out the file to data/DADA2
 
 ```
+
 # Session Information
 
 ```{r session-info}
